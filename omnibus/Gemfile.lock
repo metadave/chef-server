@@ -1,6 +1,7 @@
 GIT
   remote: git://github.com/chef/omnibus-software.git
-  revision: 05e778b04644c5bb1d1e1fb514587361868a61c6
+  revision: cdc4e052c79fd3ceec7b5f25f4096a57b45cfcae
+  branch: jdm/win-fips
   specs:
     omnibus-software (4.0.0)
 
@@ -241,4 +242,4 @@ DEPENDENCIES
   rspec
 
 BUNDLED WITH
-   1.10.0
+   1.10.6
