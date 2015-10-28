@@ -1,7 +1,7 @@
 GIT
   remote: git://github.com/chef/omnibus-software.git
-  revision: cdc4e052c79fd3ceec7b5f25f4096a57b45cfcae
-  branch: jdm/win-fips
+  revision: fccc026ae35bb56591eaf1464818e778436895d0
+  branch: jdm/server-fips
   specs:
     omnibus-software (4.0.0)
 
