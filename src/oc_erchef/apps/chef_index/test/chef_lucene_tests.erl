@@ -65,6 +65,7 @@ trimre(Bin) ->
 query_example_test_() ->
     % run the example transform tests as we run in Ruby Chef
     Path = code:priv_dir(chef_index) ++ "/../test/search_queries.txt",
+    ?debugFmt("Reading example queries from ~p", [Path]),
     Queries = read_example_queries(Path),
     [ ?_assertEqual(E, chef_lucene:parse(I)) || {I, E} <- Queries ].
 
