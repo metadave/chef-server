@@ -18,7 +18,7 @@ template "/etc/hosts" do
   owner "root"
   group "root"
   action :create
-  variables({"fqdns" => ["api.chef-server.dev",  "manage.chef-server.dev"]})
+  variables({"fqdns" => ["api.chef-server.dev",  "manage.chef-server.dev", "analytics.dev"]})
 end
 
 directory "/etc/opscode" do

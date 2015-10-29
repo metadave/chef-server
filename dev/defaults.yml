@@ -13,6 +13,9 @@ vm:
     # this vm as an external postgresql server from the start.
     use-external: true
 
+  analytics:
+    start: true
+
   # All settings below apply only to the chef-server vm
   cpus: 4
   memory: 4096

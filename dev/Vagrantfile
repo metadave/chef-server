@@ -5,6 +5,7 @@
 require "yaml"
 load "dvmtools.rb"
 CS_VM_ADDRESS="192.168.33.100"
+ANALYTICS_VM_ADDRESS="192.168.33.101"
 DB_VM_ADDRESS="192.168.33.150"
 DB_SUPERUSER="bofh"
 DB_SUPERPASS="i1uvd3v0ps"
@@ -31,6 +32,19 @@ Vagrant.configure("2") do |config|
   config.vm.define("chef-server", primary: true) do |c|
     define_chef_server(c, attributes)
   end
+
+
+  if attributes['vm'].has_key? 'analytics'
+    if attributes['vm']['analytics']['start']
+      config.vm.define("analytics") do |c|
+        define_analytics(c, attributes)
+      end
+    end
+  else
+    attributes['vm']['analytics'] = nil
+  end
+
+
 end
 
 
@@ -114,6 +128,54 @@ def define_db_server(config, attributes)
 end
 
 
+def define_analytics(config, attributes)
+  provisioning, installer, installer_path = prepare_analytics()
+  config.vm.hostname = "analytics.dev"
+  config.vm.network "private_network", ip: ANALYTICS_VM_ADDRESS
+
+  config.vm.provider :virtualbox do |vb|
+    vb.customize ["modifyvm", :id,
+                  "--name", "chef-analytics",
+                  "--memory", attributes["vm"]["memory"],
+                  "--cpus", attributes["vm"]["cpus"],
+                  "--usb", "off",
+                  "--usbehci", "off"
+    ]
+  end
+  if provisioning
+    json = {
+      "packages" => attributes["vm"]["packages"],
+      "tz" => host_timezone,
+      "omnibus-autoload" => attributes["vm"]["omnibus-autoload"]
+    }.merge attributes["vm"]["node-attributes"]
+    config.vm.synced_folder File.absolute_path(File.join(Dir.pwd, "../")), "/host",
+      type: "rsync",
+      rsync__args: ["--verbose", "--archive", "--delete", "-z", "--no-owner", "--no-group" ],
+      rsync__exclude: attributes["vm"]['sync']['exclude-files']
+    # We're also going to do a share of the slower vboxsf style, allowing us to auto-checkout dependencies
+    # and have them be properly synced to a place that we can use them.
+    config.vm.synced_folder installer_path, "/installers"
+    config.vm.provision "file", source: "~/.gitconfig", destination: ".gitconfig"
+    config.vm.provision "shell", inline: install_hack(installer)
+    config.vm.provision "chef_solo" do |chef|
+      chef.install = false
+      chef.binary_path = "/usr/bin"
+      chef.node_name = config.vm.hostname
+      chef.cookbooks_path = "cookbooks"
+      #chef.add_recipe("provisioning::analytics")
+      chef.add_recipe("dev::system")
+      chef.add_recipe("dev::user-env")
+      chef.add_recipe("dev::dvm")
+      chef.json = json || {}
+    end
+    # Makes more sense here than in a one-off line in the dvm recipe, which
+    # has no direct connection...
+    config.vm.provision "shell", inline: "opscode-analytics-ctl reconfigure"
+  end
+
+
+end
+
 ##############
 # Internals
 ##############
@@ -189,6 +251,81 @@ def prompt_installer
   end
 
 end
+
+
+
+# copy pasta!
+def prepare_analytics
+  action = ARGV[0]
+  if action =~ /^(provision|up|reload)$/
+    installer = prompt_installer_analytics
+    raise "Please set INSTALLER to the path of a .deb package for Chef Analytics." if installer.nil?
+    raise "#{installer} does not exist! Please fix this." unless File.file?(installer)
+    installer_path = File.dirname(File.expand_path(installer))
+    provisioning = true
+  end
+  [provisioning, installer, installer_path]
+end
+
+def prompt_installer_analytics
+  puts "Looking in #{Dir.home}/Downloads and #{base_path}/omnibus/pkg for installable opscode-analytics package."
+  # TODO allow config override of location, multiple locations, search pattern, max count?
+  files = Dir.glob("#{Dir.home}/Downloads/opscode-analytics*.deb") + Dir.glob("#{base_path}/omnibus/pkg/opscode-analytics*.deb")
+
+  if ENV['INSTALLER']
+    if ENV['INSTALLER'] =~ /^.*opscode-analytics.*deb$/ and File.file?(ENV['INSTALLER'])
+      user_installer = File.expand_path(ENV['INSTALLER'])
+    else
+      puts "INSTALLER #{ENV['INSTALLER']} is not a valid opscode-analytics package. Ignoring."
+    end
+  end
+
+  if files.length == 0 and not user_installer
+    return nil
+  end
+
+  files = files.sort_by{ |f| File.mtime(f) }.last(10)
+  files.reverse!
+  files << "[INSTALLER]: #{user_installer}" if user_installer
+
+  selection = 0
+
+  # For the fantastically lazy, allow an environment variable to specify
+  # which package selection to use. Special value of '-1' or 'installer' will
+  # use the INSTALLER env var automatically (instead of just putting it in
+  # the list to choose from).
+  if ENV.has_key? 'AUTOPACKAGE'
+
+    selection = ENV['AUTOPACKAGE']
+    if (selection == 'installer' or selection == '-1') and user_installer
+      # Auto pick the INSTALLER pacckage
+      selection = files.length
+    else
+      selection = selection.to_i
+    end
+
+    if selection <= 0 or selection > files.length
+      puts "Invalid AUTOPACKAGE selection of #{selection}."
+      selection = get_selection(files)
+    else
+      puts "Using AUTOPACKAGE selection of #{files[selection - 1]}"
+    end
+
+  else
+    selection = get_selection(files)
+  end
+
+  if selection == files.length  and user_installer
+    user_installer # we munged the text on this one
+  else
+    files[selection - 1]
+  end
+
+end
+
+
+
+
 
 def get_selection(files)
   selection = 0
